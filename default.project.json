@@ -25,7 +25,7 @@
     },
 
     "ServerStorage": {
-      "$path": "src/ServerStorage"
+      "$path": "ServerStorage"
     }
   }
 }
