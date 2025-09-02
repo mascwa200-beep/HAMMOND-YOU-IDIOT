@@ -8,7 +8,7 @@
         "$path": "src/shared"
       },
       "Packages": {
-        "$path": "src/Packages"}
+        "$path": "Packages"}
     },
 
     "ServerScriptService": {
@@ -16,7 +16,7 @@
         "$path": "src/server"
       },
       "ServerPackages": {
-        "$path": "src/ServerPackages"
+        "$path": "ServerPackages"
       }
     },
 
