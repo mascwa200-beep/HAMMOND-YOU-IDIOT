@@ -22,6 +22,10 @@
       "StarterPlayerScripts": {
           "$path": "src/StarterPlayerScripts"
       }
+    },
+
+    "ServerStorage": {
+      "$path": "src/ServerStorage"
     }
   }
 }
