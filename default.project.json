@@ -15,6 +15,7 @@
       "$path": "src/ServerScriptService"
     },
     "ServerPackages": {
+      "$className": "Folder",
       "$path": "ServerPackages"
     },
 
