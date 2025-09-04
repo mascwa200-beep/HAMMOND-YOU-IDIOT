@@ -84,6 +84,13 @@ local function createBooth(position)
     buttonRow.Position = UDim2.new(0, 0, 0.5, 0)
     buttonRow.BackgroundTransparency = 1
     buttonRow.Parent = boardGui
+    
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.FillDirection = Enum.FillDirection.Horizontal
+    listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    listLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    listLayout.Padding = UDim.new(0, 5)
+    listLayout.Parent = buttonRow
 
     -- Marker‑style donation buttons
     do
@@ -96,23 +103,19 @@ local function createBooth(position)
             return a.amount < b.amount
         end)
 
-        local n = #products
         for i, info in ipairs(products) do
             local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1 / n, -5, 1, -5)
-            btn.Position = UDim2.new((i - 1) / n, 2, 0, 2)
-            btn.BackgroundColor3 = Color3.new(1, 1, 1) -- white board
+            btn.Name = "Donate" .. info.amount
+            btn.Size = UDim2.new(0, 200, 1, -10)
+            btn.BackgroundColor3 = Color3.new(1, 1, 1)
             btn.BorderSizePixel = 2
-            btn.BorderColor3 = Color3.new(0.2, 0.2, 0.2)
+            btn.BorderColor3 = Color3.new(0.3, 0.3, 0.3)
             btn.Text = tostring(info.amount) .. " R$"
-            btn.Font = Enum.Font.Cartoon  -- looks hand‑drawn
+            btn.Font = Enum.Font.Cartoon
             btn.TextScaled = true
             btn.TextColor3 = Color3.new(0, 0, 0)
             btn.Parent = buttonRow
-
-            -- store metadata for client click handling
-            btn:SetAttribute("ProductId", info.productId)
-            btn:SetAttribute("Amount", info.amount)
+            -- Do not hook up MouseButton1Click here; that belongs in the LocalScript
         end
     end
 
