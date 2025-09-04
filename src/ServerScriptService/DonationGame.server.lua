@@ -252,23 +252,21 @@ MarketplaceService.ProcessReceipt = function(receipt)
     -- Check for a pending donation
     local pending = pendingDonations[receipt.PlayerId]
     if pending and DONATION_PRODUCTS[receipt.ProductId] then
-        -- Add the donated amount to the booth’s total (store as attribute)
-        local current = pending.booth:GetAttribute("TotalDonations") or 0
-        local newTotal = current + pending.amount
-        pending.booth:SetAttribute("TotalDonations", newTotal)
-        -- Update the total label text on the whiteboard
-        local sign = pending.booth:FindFirstChild("Sign")
+        local booth = pending.booth
+        booth.totalDonations = (booth.totalDonations or 0) + pending.amount
+        pendingDonations[receipt.PlayerId] = nil
+        -- Update the whiteboard total
+        local sign = booth:FindFirstChild("Sign")
         if sign then
             local boardGui = sign:FindFirstChild("BoardGui")
             if boardGui then
-                for _, ui in ipairs(boardGui:GetDescendants()) do
-                    if ui:IsA("TextLabel") and ui.Text:find("R$") then
-                        ui.Text = tostring(newTotal) .. " R$"
+                for _, child in ipairs(boardGui:GetChildren()) do
+                    if child:IsA("TextLabel") and child.Text:find("R$") then
+                        child.Text = tostring(booth.totalDonations) .. " R$"
                     end
                 end
             end
         end
-        pendingDonations[receipt.PlayerId] = nil
         return Enum.ProductPurchaseDecision.PurchaseGranted
     end
 

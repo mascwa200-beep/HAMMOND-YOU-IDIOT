@@ -11,13 +11,12 @@
         "$path": "Packages"
       },
       "DonateToBooth": {
-        "$className": "RemoteEvent"
+        "$path": "src/ReplicatedRoot/DonateToBooth"
       }
     },
 
     "ServerScriptService": {
-      "$path": "src/ServerScriptService",
-      "$ignoreUnknownInstances": true
+      "$path": "src/ServerScriptService"
     },
     "ServerPackages": {
       "$className": "Folder",
@@ -35,3 +34,4 @@
     }
   }
 }
+
