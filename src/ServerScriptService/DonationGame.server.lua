@@ -1,6 +1,15 @@
 -- DonationGame.server.lua
 local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- RemoteEvent for client -> server donation requests (new name)
+local donateEvent = ReplicatedStorage:FindFirstChild("DonateToBooth")
+if not donateEvent then
+    donateEvent = Instance.new("RemoteEvent")
+    donateEvent.Name = "DonateToBooth"
+    donateEvent.Parent = ReplicatedStorage
+end
 
 -- Replace this with your actual Developer Product ID for skipping a stage
 local SKIP_STAGE_PRODUCT = 12345678
@@ -21,6 +30,7 @@ local function createBooth(position)
     local model = Instance.new("Model")
     model.Name = "DonationBooth"
     model:SetAttribute("TotalDonations", 0)
+    model:SetAttribute("OwnerUserId", 0)
 
     local base = Instance.new("Part")
     base.Size = Vector3.new(4, 1, 4)
@@ -30,35 +40,81 @@ local function createBooth(position)
     base.Parent = model
 
     local sign = Instance.new("Part")
-    sign.Size = Vector3.new(4, 3, 0.5)
+    sign.Size = Vector3.new(6, 4, 0.5)
     sign.Position = position + Vector3.new(0, 2, -2)
     sign.Anchored = true
     sign.Name = "Sign"
     sign.Parent = model
+    sign.BrickColor = BrickColor.new("Institutional white")
 
-    local billboard = Instance.new("BillboardGui")
-    billboard.Size = UDim2.new(4, 0, 2, 0)
-    billboard.AlwaysOnTop = true
-    billboard.ExtentsOffset = Vector3.new(0, 3, 0)
-    billboard.Parent = sign
+    -- Whiteboard GUI on the front of the sign
+    local boardGui = Instance.new("SurfaceGui")
+    boardGui.Name = "BoardGui"
+    boardGui.Face = Enum.NormalId.Front
+    boardGui.CanvasSize = Vector2.new(600, 400)
+    boardGui.AlwaysOnTop = true
+    boardGui.Parent = sign
 
-    local nameLabel = Instance.new("TextLabel")
-    nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
-    nameLabel.Position = UDim2.new(0, 0, 0, 0)
-    nameLabel.Text = "Unclaimed"
-    nameLabel.TextScaled = true
-    nameLabel.BackgroundTransparency = 1
-    nameLabel.TextColor3 = Color3.new(1, 1, 1)
-    nameLabel.Parent = billboard
+    -- Title label (rigid font)
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(1, 0, 0.3, 0)
+    titleLabel.Position = UDim2.new(0, 0, 0, 0)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = "Unclaimed"
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextScaled = true
+    titleLabel.TextColor3 = Color3.new(0, 0.7, 0)
+    titleLabel.Parent = boardGui
 
-    local goalLabel = Instance.new("TextLabel")
-    goalLabel.Size = UDim2.new(1, 0, 0.5, 0)
-    goalLabel.Position = UDim2.new(0, 0, 0.5, 0)
-    goalLabel.Text = "0 R$"
-    goalLabel.TextScaled = true
-    goalLabel.BackgroundTransparency = 1
-    goalLabel.TextColor3 = Color3.new(0, 1, 0)
-    goalLabel.Parent = billboard
+    -- Donation total label (rigid font)
+    local totalLabel = Instance.new("TextLabel")
+    totalLabel.Size = UDim2.new(1, 0, 0.2, 0)
+    totalLabel.Position = UDim2.new(0, 0, 0.3, 0)
+    totalLabel.BackgroundTransparency = 1
+    totalLabel.Text = "0 R$"
+    totalLabel.Font = Enum.Font.GothamBold
+    totalLabel.TextScaled = true
+    totalLabel.TextColor3 = Color3.new(0, 0.7, 0)
+    totalLabel.Parent = boardGui
+
+    -- Frame for the donation buttons row
+    local buttonRow = Instance.new("Frame")
+    buttonRow.Name = "ButtonRow"
+    buttonRow.Size = UDim2.new(1, 0, 0.5, 0)
+    buttonRow.Position = UDim2.new(0, 0, 0.5, 0)
+    buttonRow.BackgroundTransparency = 1
+    buttonRow.Parent = boardGui
+
+    -- Marker‑style donation buttons
+    do
+        -- Build an ordered list from the DONATION_PRODUCTS map
+        local products = {}
+        for productId, amount in pairs(DONATION_PRODUCTS) do
+            table.insert(products, { productId = productId, amount = amount })
+        end
+        table.sort(products, function(a, b)
+            return a.amount < b.amount
+        end)
+
+        local n = #products
+        for i, info in ipairs(products) do
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(1 / n, -5, 1, -5)
+            btn.Position = UDim2.new((i - 1) / n, 2, 0, 2)
+            btn.BackgroundColor3 = Color3.new(1, 1, 1) -- white board
+            btn.BorderSizePixel = 2
+            btn.BorderColor3 = Color3.new(0.2, 0.2, 0.2)
+            btn.Text = tostring(info.amount) .. " R$"
+            btn.Font = Enum.Font.Cartoon  -- looks hand‑drawn
+            btn.TextScaled = true
+            btn.TextColor3 = Color3.new(0, 0, 0)
+            btn.Parent = buttonRow
+
+            -- store metadata for client click handling
+            btn:SetAttribute("ProductId", info.productId)
+            btn:SetAttribute("Amount", info.amount)
+        end
+    end
 
     local click = Instance.new("ClickDetector")
     click.MaxActivationDistance = 10
@@ -69,65 +125,21 @@ local function createBooth(position)
     click.MouseClick:Connect(function(player)
         if not owner then
             owner = player
-            nameLabel.Text = player.DisplayName .. "'s Booth"
-            goalLabel.Text = "0 R$"
+            titleLabel.Text = player.DisplayName .. "'s Booth"
+            totalLabel.Text = "0 R$"
+            model:SetAttribute("OwnerUserId", player.UserId)
         elseif owner == player then
             owner = nil
-            nameLabel.Text = "Unclaimed"
-            goalLabel.Text = "0 R$"
+            titleLabel.Text = "Unclaimed"
+            totalLabel.Text = "0 R$"
+            model:SetAttribute("OwnerUserId", 0)
         else
             -- When a visitor clicks another player's booth, prompt a donation
             MarketplaceService:PromptProductPurchase(player, SKIP_STAGE_PRODUCT)
         end
     end)
 
-    -- Spawn donation buttons for each defined product
-    local buttonOffsets = {
-        Vector3.new(-1.5, 0.5, 2),
-        Vector3.new(0,    0.5, 2),
-        Vector3.new(1.5,  0.5, 2),
-    }
-    local index = 1
-    for productId, amount in pairs(DONATION_PRODUCTS) do
-        -- Create the button part
-        local btn = Instance.new("Part")
-        btn.Size = Vector3.new(1, 0.5, 1)
-        btn.Position = base.Position + buttonOffsets[index]
-        btn.Anchored = true
-        btn.BrickColor = BrickColor.new("Bright green")
-        btn.Name = "Donate" .. amount
-        btn.Parent = model
-
-        -- Label showing the donation amount
-        local bbg = Instance.new("BillboardGui")
-        bbg.Size = UDim2.new(1.5, 0, 0.8, 0)
-        bbg.AlwaysOnTop = true
-        bbg.ExtentsOffset = Vector3.new(0, 1, 0)
-        bbg.Parent = btn
-
-        local amountLabel = Instance.new("TextLabel")
-        amountLabel.Size = UDim2.new(1, 0, 1, 0)
-        amountLabel.BackgroundTransparency = 1
-        amountLabel.Text = tostring(amount) .. " R$"
-        amountLabel.TextScaled = true
-        amountLabel.TextColor3 = Color3.new(1, 1, 1)
-        amountLabel.Parent = bbg
-
-        -- Add a click detector for the donation button
-        local btnClick = Instance.new("ClickDetector")
-        btnClick.MaxActivationDistance = 10
-        btnClick.Parent = btn
-
-        -- When clicked, prompt a product purchase
-        btnClick.MouseClick:Connect(function(player)
-            if owner and player ~= owner then
-                pendingDonations[player.UserId] = { booth = model, amount = amount }
-                MarketplaceService:PromptProductPurchase(player, productId)
-            end
-        end)
-
-        index += 1
-    end
+    -- (Old 3D donation buttons removed; buttons now live in BoardGui)
 
     return model
 end
@@ -148,6 +160,34 @@ for _, pos in ipairs(boothPositions) do
     local booth = createBooth(pos)
     booth.Parent = boothFolder
 end
+
+-- Handle donation requests from client GUI buttons (amount-based)
+donateEvent.OnServerEvent:Connect(function(player, boothModel, amount)
+    if typeof(amount) ~= "number" then return end
+
+    -- Find a productId that matches the requested amount
+    local productId
+    for pid, amt in pairs(DONATION_PRODUCTS) do
+        if amt == amount then
+            productId = pid
+            break
+        end
+    end
+    if not productId then return end
+
+    -- Validate booth reference
+    if not (boothModel and typeof(boothModel) == "Instance" and boothModel:IsA("Model") and (boothModel.Parent == boothFolder or boothModel:IsDescendantOf(boothFolder))) then
+        return
+    end
+
+    local ownerUserId = boothModel:GetAttribute("OwnerUserId") or 0
+    if ownerUserId == 0 or ownerUserId == player.UserId then
+        return
+    end
+
+    pendingDonations[player.UserId] = { booth = boothModel, amount = amount }
+    MarketplaceService:PromptProductPurchase(player, productId)
+end)
 
 -- === Obby Creation ===
 
@@ -216,13 +256,12 @@ MarketplaceService.ProcessReceipt = function(receipt)
         local current = pending.booth:GetAttribute("TotalDonations") or 0
         local newTotal = current + pending.amount
         pending.booth:SetAttribute("TotalDonations", newTotal)
-        -- Update the goalLabel text
+        -- Update the total label text on the whiteboard
         local sign = pending.booth:FindFirstChild("Sign")
         if sign then
-            local bbg = sign:FindFirstChildOfClass("BillboardGui")
-            if bbg then
-                local labels = bbg:GetChildren()
-                for _, ui in ipairs(labels) do
+            local boardGui = sign:FindFirstChild("BoardGui")
+            if boardGui then
+                for _, ui in ipairs(boardGui:GetDescendants()) do
                     if ui:IsA("TextLabel") and ui.Text:find("R$") then
                         ui.Text = tostring(newTotal) .. " R$"
                     end
