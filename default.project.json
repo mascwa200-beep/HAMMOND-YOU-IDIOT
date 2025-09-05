@@ -9,10 +9,8 @@
       },
       "Packages": {
         "$path": "Packages"
-      },
-      "DonateToBooth": {
-        "$className": "RemoteEvent"
       }
+      
     },
 
     "ServerScriptService": {
