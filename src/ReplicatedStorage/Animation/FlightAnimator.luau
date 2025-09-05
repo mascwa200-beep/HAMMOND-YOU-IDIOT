@@ -213,9 +213,11 @@ function AnimatorMt:_bind()
             end
         end
 
-        local mode = (char and char:GetAttribute("FlightMode")) :: any
-        local enabledAttr = (char and char:GetAttribute("FlightEnabled")) :: any
-        local enabled = (self.controller and self.controller.enabled) or enabledAttr == true or (mode == "enabling" or mode == "landing" or mode == "arming" or mode == "flying")
+        local mode = (char and (char:GetAttribute("FlightMode") :: any)) or "off"
+        local enabledAttr = (char and char:GetAttribute("FlightEnabled") == true) or false
+        -- Only animate during core flight phases; exclude arming so we don't pose before takeoff
+        local inFlightPhase = (mode == "enabling" or mode == "flying" or mode == "landing")
+        local enabled = (self.controller and self.controller.enabled) or (enabledAttr and inFlightPhase)
         if not enabled then
             -- reset and idle
             if self._tracks then stopAllTracks(self._animator) end
