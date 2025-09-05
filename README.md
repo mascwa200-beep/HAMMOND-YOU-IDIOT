@@ -15,3 +15,22 @@ rojo serve
 ```
 
 For more help, check out [the Rojo documentation](https://rojo.space/docs).
+
+## Ground Planes
+- Module: `ReplicatedStorage/Shared/Grounding/GroundPlanes.luau` (auto-initializes)
+- Classifies available planes as ground using simple heuristics:
+  - Thin anchored, collidable parts (smallest axis <= 0.6 studs) whose up faces mostly upward
+  - Or any part tagged with `Ground`, `Plane`, or `Floor`
+  - Optionally includes terrain for raycasts
+
+### Usage
+- Build ground-only raycasts:
+  - `local GroundPlanes = require(ReplicatedStorage.Shared.Grounding.GroundPlanes)`
+  - `local rp = GroundPlanes.getRaycastParams()`
+  - `workspace:Raycast(origin, direction, rp)`
+- Query and configuration:
+  - `GroundPlanes.getAll()` returns current ground parts array
+  - `GroundPlanes.isGround(inst)` checks membership
+  - `GroundPlanes.configure({ thicknessThreshold = 0.4, minUpDot = 0.5 })`
+
+The existing `Shared/Grounding/Grounding.luau` will use GroundPlanes automatically when present for plane/ground distance checks.
