@@ -30,6 +30,11 @@
 
     "ServerStorage": {
       "$path": "src/ServerStorage"
+    },
+
+    "Workspace": {
+      "$path": "src/Workspace",
+      "$ignoreUnknownInstances": true
     }
   }
 }
