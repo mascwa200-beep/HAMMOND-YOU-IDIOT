@@ -20,6 +20,7 @@ local controller = FlightController.forLocalPlayer({
     sprintMultiplier = 1.8,
     ascendKey = Enum.KeyCode.Space,
     descendKey = Enum.KeyCode.LeftControl,
+    descendAltKey = Enum.KeyCode.C, -- fallback in environments where Ctrl+W is intercepted
     sprintKey = Enum.KeyCode.LeftShift,
     ascendSpeed = 70,
     descendSpeed = 70,

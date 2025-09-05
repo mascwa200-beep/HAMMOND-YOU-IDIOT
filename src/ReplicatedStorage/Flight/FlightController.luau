@@ -7,6 +7,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -24,6 +25,7 @@ export type Config = {
     sprintMultiplier: number?,
     ascendKey: Enum.KeyCode?,
     descendKey: Enum.KeyCode?,
+    descendAltKey: Enum.KeyCode?,
     sprintKey: Enum.KeyCode?,
     ascendSpeed: number?, -- vertical up speed (studs/sec)
     descendSpeed: number?, -- vertical down speed (studs/sec)
@@ -79,6 +81,7 @@ export type Controller = {
     _keyState: { [Enum.KeyCode]: boolean }?,
     _inputConnBegan: RBXScriptConnection?,
     _inputConnEnded: RBXScriptConnection?,
+    _actionBound: boolean?,
     enable: (self: Controller) -> (),
     disable: (self: Controller) -> (),
     toggle: (self: Controller) -> (),
@@ -90,6 +93,7 @@ local DEFAULTS: Config = {
     sprintMultiplier = 1.8,
     ascendKey = Enum.KeyCode.Space,
     descendKey = Enum.KeyCode.LeftControl,
+    descendAltKey = nil,
     sprintKey = Enum.KeyCode.LeftShift,
     transitionTime = 1.0,
     liftAmount = 3.0,
@@ -167,11 +171,19 @@ function ControllerMt:_ensureInputBinding()
     self._inputConnBegan = UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
         if input.UserInputType == Enum.UserInputType.Keyboard then
             self._keyState[input.KeyCode] = true
+            if Debug then
+                local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+                Debug.log("flight", "InputBegan", input.KeyCode.Name, "gp=", gameProcessed, "ctrl=", ctrl)
+            end
         end
     end)
     self._inputConnEnded = UserInputService.InputEnded:Connect(function(input: InputObject, gameProcessed: boolean)
         if input.UserInputType == Enum.UserInputType.Keyboard then
             self._keyState[input.KeyCode] = false
+            if Debug then
+                local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+                Debug.log("flight", "InputEnded", input.KeyCode.Name, "gp=", gameProcessed, "ctrl=", ctrl)
+            end
         end
     end)
 end
@@ -182,6 +194,58 @@ function ControllerMt:_isDown(code: Enum.KeyCode?): boolean
         return self._keyState[code] == true
     end
     return UserInputService:IsKeyDown(code)
+end
+
+local ACTION_MOVE = "Flight_MoveAction"
+
+function ControllerMt:_bindMoveActions()
+    if self._actionBound then return end
+    self._keyState = self._keyState or {}
+    local cfg = self.config
+    local keys = {
+        Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+        Enum.KeyCode.Up, Enum.KeyCode.Left, Enum.KeyCode.Down, Enum.KeyCode.Right,
+    }
+    local function push(k: Enum.KeyCode?)
+        if k then table.insert(keys, k) end
+    end
+    push(cfg.ascendKey)
+    push(cfg.descendKey)
+    push(cfg.sprintKey)
+    push(cfg.descendAltKey)
+
+    local function onMove(actionName: string, inputState: Enum.UserInputState, inputObj: InputObject)
+        if inputObj.UserInputType == Enum.UserInputType.Keyboard then
+            local kc = inputObj.KeyCode
+            if inputState == Enum.UserInputState.Begin then
+                self._keyState[kc] = true
+            elseif inputState == Enum.UserInputState.End then
+                self._keyState[kc] = false
+            end
+            if Debug then
+                local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+                Debug.log("flight", "CAS:", actionName, inputState.Name, kc.Name, "ctrl=", ctrl)
+            end
+        end
+        return Enum.ContextActionResult.Pass
+    end
+
+    pcall(function()
+        if (ContextActionService :: any).BindActionAtPriority then
+            (ContextActionService :: any):BindActionAtPriority(ACTION_MOVE, onMove, false, Enum.ContextActionPriority.High.Value, table.unpack(keys))
+        else
+            ContextActionService:BindAction(ACTION_MOVE, onMove, false, table.unpack(keys))
+        end
+        self._actionBound = true
+    end)
+end
+
+function ControllerMt:_unbindMoveActions()
+    if not self._actionBound then return end
+    pcall(function()
+        ContextActionService:UnbindAction(ACTION_MOVE)
+    end)
+    self._actionBound = false
 end
 
 function ControllerMt:_bind()
@@ -242,6 +306,9 @@ function ControllerMt:_bind()
                 vertical += 1
             end
             if cfg.descendKey and self:_isDown(cfg.descendKey) then
+                vertical -= 1
+            end
+            if cfg.descendAltKey and self:_isDown(cfg.descendAltKey) then
                 vertical -= 1
             end
         end
@@ -519,6 +586,7 @@ function ControllerMt:enable()
     if self.enabled then return end
     -- Ensure input tracking is bound so modifier keys don't suppress movement combos
     self:_ensureInputBinding()
+    self:_bindMoveActions()
     self.enabled = true
     self._transitionMode = "enabling"
     self._transitionStart = os.clock()
@@ -666,6 +734,7 @@ function ControllerMt:_finalizeDisable()
         pcall(function() self._orient:unregisterProvider("flight") end)
         self._orient = nil
     end
+    self:_unbindMoveActions()
     self:_unbind()
 end
 
@@ -716,6 +785,9 @@ function ControllerMt:destroy()
         self._charConn:Disconnect()
         self._charConn = nil
     end
+    if self._inputConnBegan then self._inputConnBegan:Disconnect(); self._inputConnBegan = nil end
+    if self._inputConnEnded then self._inputConnEnded:Disconnect(); self._inputConnEnded = nil end
+    self:_unbindMoveActions()
     Controllers[self.player] = nil
 end
 
@@ -761,6 +833,7 @@ function FlightController.getOrCreate(player: Player, config: Config?): Controll
         _keyState = nil,
         _inputConnBegan = nil,
         _inputConnEnded = nil,
+        _actionBound = false,
     }, ControllerMt)
 
     Controllers[player] = self
