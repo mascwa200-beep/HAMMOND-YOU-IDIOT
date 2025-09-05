@@ -250,6 +250,7 @@ end
 
 function ControllerMt:_bind()
     if self._conn then return end
+    if Debug then Debug.log("flight", "Binding render loop") end
 
     self._conn = RunService.RenderStepped:Connect(function(dt)
         -- Run while enabled or during transitions (arming/enabling/landing)
@@ -496,6 +497,7 @@ end
 function ControllerMt:_onCharacterAdded(character: Model)
     self._lastCharacter = character
     if not self.enabled then return end
+    if Debug then Debug.log("flight", "_onCharacterAdded; transition=", self._transitionMode) end
     -- Ensure humanoid autorotate is disabled while enabled
     local _, hum = getCharacterParts(character)
     if hum then
@@ -554,6 +556,7 @@ function ControllerMt:_onCharacterAdded(character: Model)
     -- Install anti-gravity VectorForce to fully cancel gravity and hover (skip during arming)
     local hrp, _ = getCharacterParts(character)
     if hrp and not self._antiGrav and self._transitionMode ~= "arming" then
+        if Debug then Debug.log("flight", "Installing anti-gravity VectorForce") end
         local att = Instance.new("Attachment")
         att.Name = "FlightAttachment"
         att.Parent = hrp
@@ -584,6 +587,7 @@ end
 
 function ControllerMt:enable()
     if self.enabled then return end
+    if Debug then Debug.log("flight", "enable() called") end
     -- Ensure input tracking is bound so modifier keys don't suppress movement combos
     self:_ensureInputBinding()
     self:_bindMoveActions()
@@ -636,6 +640,7 @@ function ControllerMt:enable()
     end)
     if not self._charConn then
         self._charConn = self.player.CharacterAdded:Connect(function(char)
+            if Debug then Debug.log("flight", "CharacterAdded observed while enabled") end
             self:_onCharacterAdded(char)
         end)
     end
@@ -740,6 +745,7 @@ end
 
 function ControllerMt:disable()
     if not self.enabled then return end
+    if Debug then Debug.log("flight", "disable() called") end
     self.enabled = false
     -- Start landing; keep connection alive for transition
     self._transitionMode = "landing"
@@ -772,6 +778,7 @@ function ControllerMt:disable()
 end
 
 function ControllerMt:toggle()
+    if Debug then Debug.log("flight", "toggle() enabled=", self.enabled) end
     if self.enabled then
         self:disable()
     else

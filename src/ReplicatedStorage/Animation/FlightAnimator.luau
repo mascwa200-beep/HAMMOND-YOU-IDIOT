@@ -18,6 +18,16 @@ do
     if ok then Debug = mod end
 end
 
+-- Optional procedural pose module with explicit superhero poses
+local Poses
+do
+    local ok, mod = pcall(function()
+        local Shared = ReplicatedStorage:WaitForChild("Shared")
+        return require(Shared:WaitForChild("Animation"):WaitForChild("Poses"))
+    end)
+    if ok then Poses = mod end
+end
+
 export type AnimIds = {
     hover: string?,
     cruise: string?,
@@ -256,9 +266,18 @@ function AnimatorMt:_bind()
             state = "hover"
         end
 
+        local usedPoses = false
+        if (not self._tracks or next(self._tracks) == nil) and Poses and char then
+            local f = (Poses :: any)[state]
+            if type(f) == "function" then
+                f(char)
+                usedPoses = true
+            end
+        end
+
         if self._tracks and next(self._tracks) ~= nil then
             playExclusive(self._tracks, state)
-        else
+        elseif not usedPoses then
             applyProceduralPose(self._joints, state, self.config.smoothing or DEFAULTS.smoothing)
         end
 
