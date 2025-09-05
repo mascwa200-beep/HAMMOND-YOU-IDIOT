@@ -28,7 +28,9 @@ local controller = FlightController.forLocalPlayer({
     -- Modular behavior tuning
     alignTo = "movement",
     inputSpace = "camera",
-    disableDefaultControls = false, -- do not hijack controls; stay modular
+    -- Keep default controls active; flight code uses its own
+    -- input tracking and won’t conflict with modifiers like LeftControl.
+    disableDefaultControls = false,
     suppressFallingAnim = true, -- suppress default tracks while flight animator drives
     moveThreshold = 0.15, -- if below, treat as standstill and hover
     activateAltitude = 1.5, -- switch to full flight once risen this much
