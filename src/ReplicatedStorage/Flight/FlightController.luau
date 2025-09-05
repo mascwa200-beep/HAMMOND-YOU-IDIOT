@@ -7,6 +7,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -24,6 +25,7 @@ export type Config = {
     sprintMultiplier: number?,
     ascendKey: Enum.KeyCode?,
     descendKey: Enum.KeyCode?,
+    descendAltKey: Enum.KeyCode?,
     sprintKey: Enum.KeyCode?,
     ascendSpeed: number?, -- vertical up speed (studs/sec)
     descendSpeed: number?, -- vertical down speed (studs/sec)
@@ -76,6 +78,10 @@ export type Controller = {
     _idleTrack: AnimationTrack?,
     _moveTrack: AnimationTrack?,
     _orient: any?,
+    _keyState: { [Enum.KeyCode]: boolean }?,
+    _inputConnBegan: RBXScriptConnection?,
+    _inputConnEnded: RBXScriptConnection?,
+    _actionBound: boolean?,
     enable: (self: Controller) -> (),
     disable: (self: Controller) -> (),
     toggle: (self: Controller) -> (),
@@ -87,6 +93,7 @@ local DEFAULTS: Config = {
     sprintMultiplier = 1.8,
     ascendKey = Enum.KeyCode.Space,
     descendKey = Enum.KeyCode.LeftControl,
+    descendAltKey = nil,
     sprintKey = Enum.KeyCode.LeftShift,
     transitionTime = 1.0,
     liftAmount = 3.0,
@@ -157,6 +164,90 @@ end
 local ControllerMt = {} :: Controller
 ControllerMt.__index = ControllerMt
 
+-- Robust key tracking so modifiers (e.g., LeftControl) don't suppress forward keys
+function ControllerMt:_ensureInputBinding()
+    if self._inputConnBegan and self._inputConnEnded then return end
+    self._keyState = self._keyState or {}
+    self._inputConnBegan = UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            self._keyState[input.KeyCode] = true
+            if Debug then
+                local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+                Debug.log("flight", "InputBegan", input.KeyCode.Name, "gp=", gameProcessed, "ctrl=", ctrl)
+            end
+        end
+    end)
+    self._inputConnEnded = UserInputService.InputEnded:Connect(function(input: InputObject, gameProcessed: boolean)
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            self._keyState[input.KeyCode] = false
+            if Debug then
+                local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+                Debug.log("flight", "InputEnded", input.KeyCode.Name, "gp=", gameProcessed, "ctrl=", ctrl)
+            end
+        end
+    end)
+end
+
+function ControllerMt:_isDown(code: Enum.KeyCode?): boolean
+    if not code then return false end
+    if self._keyState and self._keyState[code] ~= nil then
+        return self._keyState[code] == true
+    end
+    return UserInputService:IsKeyDown(code)
+end
+
+local ACTION_MOVE = "Flight_MoveAction"
+
+function ControllerMt:_bindMoveActions()
+    if self._actionBound then return end
+    self._keyState = self._keyState or {}
+    local cfg = self.config
+    local keys = {
+        Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+        Enum.KeyCode.Up, Enum.KeyCode.Left, Enum.KeyCode.Down, Enum.KeyCode.Right,
+    }
+    local function push(k: Enum.KeyCode?)
+        if k then table.insert(keys, k) end
+    end
+    push(cfg.ascendKey)
+    push(cfg.descendKey)
+    push(cfg.sprintKey)
+    push(cfg.descendAltKey)
+
+    local function onMove(actionName: string, inputState: Enum.UserInputState, inputObj: InputObject)
+        if inputObj.UserInputType == Enum.UserInputType.Keyboard then
+            local kc = inputObj.KeyCode
+            if inputState == Enum.UserInputState.Begin then
+                self._keyState[kc] = true
+            elseif inputState == Enum.UserInputState.End then
+                self._keyState[kc] = false
+            end
+            if Debug then
+                local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+                Debug.log("flight", "CAS:", actionName, inputState.Name, kc.Name, "ctrl=", ctrl)
+            end
+        end
+        return Enum.ContextActionResult.Pass
+    end
+
+    pcall(function()
+        if (ContextActionService :: any).BindActionAtPriority then
+            (ContextActionService :: any):BindActionAtPriority(ACTION_MOVE, onMove, false, Enum.ContextActionPriority.High.Value, table.unpack(keys))
+        else
+            ContextActionService:BindAction(ACTION_MOVE, onMove, false, table.unpack(keys))
+        end
+        self._actionBound = true
+    end)
+end
+
+function ControllerMt:_unbindMoveActions()
+    if not self._actionBound then return end
+    pcall(function()
+        ContextActionService:UnbindAction(ACTION_MOVE)
+    end)
+    self._actionBound = false
+end
+
 function ControllerMt:_bind()
     if self._conn then return end
 
@@ -196,25 +287,28 @@ function ControllerMt:_bind()
         local function add(v)
             move += v
         end
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then
+        if self:_isDown(Enum.KeyCode.W) or self:_isDown(Enum.KeyCode.Up) then
             add(Vector3.new(forward.X, 0, forward.Z))
         end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then
+        if self:_isDown(Enum.KeyCode.S) or self:_isDown(Enum.KeyCode.Down) then
             add(-Vector3.new(forward.X, 0, forward.Z))
         end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then
+        if self:_isDown(Enum.KeyCode.A) or self:_isDown(Enum.KeyCode.Left) then
             add(-Vector3.new(right.X, 0, right.Z))
         end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then
+        if self:_isDown(Enum.KeyCode.D) or self:_isDown(Enum.KeyCode.Right) then
             add(Vector3.new(right.X, 0, right.Z))
         end
 
         local vertical = 0
         if self.enabled then
-            if cfg.ascendKey and UserInputService:IsKeyDown(cfg.ascendKey) then
+            if cfg.ascendKey and self:_isDown(cfg.ascendKey) then
                 vertical += 1
             end
-            if cfg.descendKey and UserInputService:IsKeyDown(cfg.descendKey) then
+            if cfg.descendKey and self:_isDown(cfg.descendKey) then
+                vertical -= 1
+            end
+            if cfg.descendAltKey and self:_isDown(cfg.descendAltKey) then
                 vertical -= 1
             end
         end
@@ -222,7 +316,7 @@ function ControllerMt:_bind()
         -- Horizontal speed and vertical speed are computed independently so vertical is constant world Y
         local baseSpeed = cfg.speed or DEFAULTS.speed
         local horizSpeed = baseSpeed
-        if self.enabled and cfg.sprintKey and UserInputService:IsKeyDown(cfg.sprintKey) then
+        if self.enabled and cfg.sprintKey and self:_isDown(cfg.sprintKey) then
             horizSpeed *= cfg.sprintMultiplier or DEFAULTS.sprintMultiplier
         end
         local ascendSpeed = cfg.ascendSpeed or cfg.speed or DEFAULTS.speed
@@ -268,7 +362,7 @@ function ControllerMt:_bind()
             if self._enableStartHeight and hrp then
                 gained = hrp.Position.Y - (self._enableStartHeight :: number)
             end
-            local ascendWanted = cfg.ascendKey and UserInputService:IsKeyDown(cfg.ascendKey)
+            local ascendWanted = cfg.ascendKey and self:_isDown(cfg.ascendKey)
             if (activateAlt and gained >= activateAlt) or ascendWanted then
                 -- Become active: set to off (active), install anti-gravity and prep anim pose
                 self._transitionMode = "off"
@@ -283,9 +377,6 @@ function ControllerMt:_bind()
         -- Controlled landing transition: bleed horizontal speed, set gentle descent
         if self._transitionMode == "landing" then
             local currentVel = hrp.AssemblyLinearVelocity
-            local k = cfg.landingHorizFriction or DEFAULTS.landingHorizFriction :: number
-            local decay = math.exp(-math.max(0, k) * dt)
-            local horiz = Vector3.new(currentVel.X, 0, currentVel.Z) * decay
 
             -- Distance-aware vertical descent: faster high up, slows as feet near ground
             local plane = (cfg.landingPlane or DEFAULTS.landingPlane) :: string
@@ -309,7 +400,9 @@ function ControllerMt:_bind()
                 descendSpeed = baseDown
             end
             local descend = -descendSpeed
-            velocity = horiz + Vector3.new(0, descend, 0)
+            -- Only drive vertical speed; preserve current horizontal so the player can move.
+            -- Keep anti-gravity until contact so descent is controlled.
+            velocity = Vector3.new(currentVel.X, descend, currentVel.Z)
 
             -- Complete only when the chosen plane actually contacts ground
             local contact = false
@@ -328,6 +421,12 @@ function ControllerMt:_bind()
         -- Apply velocity directly to the assembly (simple, idempotent)
         -- With anti-gravity active, Y stays neutral unless vertical input is given
         hrp.AssemblyLinearVelocity = Vector3.new(velocity.X, velocity.Y, velocity.Z)
+
+        if Debug then
+            local w = self:_isDown(Enum.KeyCode.W) or self:_isDown(Enum.KeyCode.Up)
+            local ctrl = self:_isDown(self.config.descendKey or DEFAULTS.descendKey)
+            Debug.log("flight", "keys: W=", w, " CTRL=", ctrl, " move=", move, " vertical=", vertical, " vel=", velocity)
+        end
 
         -- Update last facing from movement; actual yaw is applied by OrientationController provider
         local flatMove = Vector3.new(move.X, 0, move.Z)
@@ -485,6 +584,9 @@ end
 
 function ControllerMt:enable()
     if self.enabled then return end
+    -- Ensure input tracking is bound so modifier keys don't suppress movement combos
+    self:_ensureInputBinding()
+    self:_bindMoveActions()
     self.enabled = true
     self._transitionMode = "enabling"
     self._transitionStart = os.clock()
@@ -632,6 +734,7 @@ function ControllerMt:_finalizeDisable()
         pcall(function() self._orient:unregisterProvider("flight") end)
         self._orient = nil
     end
+    self:_unbindMoveActions()
     self:_unbind()
 end
 
@@ -645,6 +748,13 @@ function ControllerMt:disable()
         local ch = self.player.Character
         if ch then ch:SetAttribute("FlightMode", "landing") end
     end)
+    -- Immediately restore player controls so horizontal movement works during landing
+    if self._controls and self._controlsDisabled then
+        pcall(function()
+            self._controls:Enable()
+        end)
+        self._controlsDisabled = false
+    end
     -- Immediately restore player orientation/controls to avoid blocking rotation
     local character = self.player.Character or self._lastCharacter
     if character then
@@ -675,6 +785,9 @@ function ControllerMt:destroy()
         self._charConn:Disconnect()
         self._charConn = nil
     end
+    if self._inputConnBegan then self._inputConnBegan:Disconnect(); self._inputConnBegan = nil end
+    if self._inputConnEnded then self._inputConnEnded:Disconnect(); self._inputConnEnded = nil end
+    self:_unbindMoveActions()
     Controllers[self.player] = nil
 end
 
@@ -717,6 +830,10 @@ function FlightController.getOrCreate(player: Player, config: Config?): Controll
         _orient = nil,
         _enableFromStandstill = nil,
         _enableStartHeight = nil,
+        _keyState = nil,
+        _inputConnBegan = nil,
+        _inputConnEnded = nil,
+        _actionBound = false,
     }, ControllerMt)
 
     Controllers[player] = self

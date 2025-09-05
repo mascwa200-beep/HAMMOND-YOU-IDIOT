@@ -198,7 +198,7 @@ AnimatorMt.__index = AnimatorMt
 function AnimatorMt:_bind()
     if self._conn then return end
     self._conn = RunService.RenderStepped:Connect(function()
-        local char, hum = getHumanoid(self.player)
+        local char, hum, hrp = getHumanoid(self.player)
         if not hum then return end
 
         -- Reacquire animator/joints after respawn
@@ -234,8 +234,11 @@ function AnimatorMt:_bind()
         local descendHeld = keys.descend and UserInputService:IsKeyDown(keys.descend)
         local sprintHeld = keys.sprint and UserInputService:IsKeyDown(keys.sprint)
 
-        local moveMag = hum.MoveDirection.Magnitude
-        local moving = moveMag > 0.05
+        -- Detect horizontal movement based on actual assembly velocity to remain accurate
+        -- even when default controls are disabled during flight.
+        local v = if hrp then hrp.AssemblyLinearVelocity else Vector3.zero
+        local horizSpeed = Vector3.new(v.X, 0, v.Z).Magnitude
+        local moving = horizSpeed > 0.5
 
         local state: string
         if mode == "landing" then

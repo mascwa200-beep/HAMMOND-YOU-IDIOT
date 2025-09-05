@@ -2,6 +2,20 @@
 -- Provides distance-to-ground and plane-contact checks, focusing on "feet" contact by default.
 
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Try to source optional GroundPlanes module to define what counts as ground.
+local GroundPlanes: any = nil
+do
+    local ok, shared = pcall(function()
+        return ReplicatedStorage:WaitForChild("Shared")
+    end)
+    if ok and shared then
+        pcall(function()
+            GroundPlanes = require(shared:WaitForChild("Grounding"):WaitForChild("GroundPlanes"))
+        end)
+    end
+end
 
 export type Plane = "feet" | "bottom" | "top" | "front" | "back" | "left" | "right"
 
@@ -27,15 +41,25 @@ local function hrpOrTorso(character: Model): BasePart?
     return nil
 end
 
-local function rayParamsIgnoringCharacter(character: Model, params: RaycastParams?): RaycastParams
-    local rp = params or RaycastParams.new()
-    rp.FilterType = Enum.RaycastFilterType.Exclude
-    local list = {}
-    for _, inst in ipairs(rp.FilterDescendantsInstances or {}) do
-        table.insert(list, inst)
+local function buildRayParams(character: Model, params: RaycastParams?): RaycastParams
+    local rp = params
+    if not rp then
+        if GroundPlanes and GroundPlanes.getRaycastParams then
+            rp = GroundPlanes.getRaycastParams()
+        else
+            rp = RaycastParams.new()
+            rp.FilterType = Enum.RaycastFilterType.Exclude
+        end
     end
-    table.insert(list, character)
-    rp.FilterDescendantsInstances = list
+    -- Ensure we ignore the character if using Exclude filtering
+    if rp.FilterType == Enum.RaycastFilterType.Exclude then
+        local list = {}
+        for _, inst in ipairs(rp.FilterDescendantsInstances or {}) do
+            table.insert(list, inst)
+        end
+        table.insert(list, character)
+        rp.FilterDescendantsInstances = list
+    end
     return rp
 end
 
@@ -81,11 +105,16 @@ end
 function Grounding.distanceToPlane(character: Model, plane: Plane?, rayLength: number?, params: RaycastParams?): number?
     local casts = samplePoints(character, plane or "feet")
     if #casts == 0 then return nil end
-    local rp = rayParamsIgnoringCharacter(character, params)
+    local rp = buildRayParams(character, params)
     local length = rayLength or 25
     local minDist: number? = nil
     for _, c in ipairs(casts) do
-        local result = Workspace:Raycast(c.origin, c.dir.Unit * length, rp)
+        local result
+        if GroundPlanes and GroundPlanes.raycast then
+            result = GroundPlanes.raycast(c.origin, c.dir.Unit * length, character, rp)
+        else
+            result = Workspace:Raycast(c.origin, c.dir.Unit * length, rp)
+        end
         if result then
             local d = (result.Position - c.origin).Magnitude
             if not minDist or d < minDist then minDist = d end
