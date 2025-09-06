@@ -18,6 +18,16 @@ do
     if ok then Debug = mod end
 end
 
+-- Optional procedural pose module with explicit superhero poses
+local Poses
+do
+    local ok, mod = pcall(function()
+        local Shared = ReplicatedStorage:WaitForChild("Shared")
+        return require(Shared:WaitForChild("Animation"):WaitForChild("Poses"))
+    end)
+    if ok then Poses = mod end
+end
+
 export type AnimIds = {
     hover: string?,
     cruise: string?,
@@ -198,7 +208,7 @@ AnimatorMt.__index = AnimatorMt
 function AnimatorMt:_bind()
     if self._conn then return end
     self._conn = RunService.RenderStepped:Connect(function()
-        local char, hum = getHumanoid(self.player)
+        local char, hum, hrp = getHumanoid(self.player)
         if not hum then return end
 
         -- Reacquire animator/joints after respawn
@@ -234,8 +244,11 @@ function AnimatorMt:_bind()
         local descendHeld = keys.descend and UserInputService:IsKeyDown(keys.descend)
         local sprintHeld = keys.sprint and UserInputService:IsKeyDown(keys.sprint)
 
-        local moveMag = hum.MoveDirection.Magnitude
-        local moving = moveMag > 0.05
+        -- Detect horizontal movement based on actual assembly velocity to remain accurate
+        -- even when default controls are disabled during flight.
+        local v = if hrp then hrp.AssemblyLinearVelocity else Vector3.zero
+        local horizSpeed = Vector3.new(v.X, 0, v.Z).Magnitude
+        local moving = horizSpeed > 0.5
 
         local state: string
         if mode == "landing" then
@@ -253,9 +266,18 @@ function AnimatorMt:_bind()
             state = "hover"
         end
 
+        local usedPoses = false
+        if (not self._tracks or next(self._tracks) == nil) and Poses and char then
+            local f = (Poses :: any)[state]
+            if type(f) == "function" then
+                f(char)
+                usedPoses = true
+            end
+        end
+
         if self._tracks and next(self._tracks) ~= nil then
             playExclusive(self._tracks, state)
-        else
+        elseif not usedPoses then
             applyProceduralPose(self._joints, state, self.config.smoothing or DEFAULTS.smoothing)
         end
 
