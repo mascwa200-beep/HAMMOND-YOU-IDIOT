@@ -7,5 +7,6 @@
 
 Packages/
 ServerPackages/
+server/ServerPackages/
 sourcemap.json
 wally.lock

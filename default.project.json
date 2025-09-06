@@ -2,36 +2,33 @@
   "name": "Hammond You Idiot",
   "tree": {
     "$className": "DataModel",
-
     "ReplicatedStorage": {
       "Shared": {
         "$path": "src/ReplicatedStorage"
       },
       "Packages": {
         "$path": "Packages"
+      },
+      "ReplicatedRoot": {
+        "$path": "src/ReplicatedRoot"
       }
-      
     },
-
     "ServerScriptService": {
       "$path": "src/ServerScriptService",
       "$ignoreUnknownInstances": true
     },
     "ServerPackages": {
       "$className": "Folder",
-      "$path": "ServerPackages"
+      "$path": "server/ServerPackages"
     },
-
     "StarterPlayer": {
       "StarterPlayerScripts": {
-          "$path": "src/StarterPlayerScripts"
+        "$path": "src/StarterPlayerScripts"
       }
     },
-
     "ServerStorage": {
       "$path": "src/ServerStorage"
     },
-
     "Workspace": {
       "$path": "src/Workspace",
       "$ignoreUnknownInstances": true
